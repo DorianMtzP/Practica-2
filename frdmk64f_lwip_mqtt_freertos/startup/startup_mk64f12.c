@@ -441,8 +441,7 @@ extern unsigned int __bss_section_table_end;
 __attribute__ ((naked, section(".after_vectors.reset")))
 void ResetISR(void) {
 
-    // Disable interrupts
-    __asm volatile ("cpsid i");
+    // Disable interrupts   __asm volatile ("cpsid i");
 
 
 #if defined (__USE_CMSIS)

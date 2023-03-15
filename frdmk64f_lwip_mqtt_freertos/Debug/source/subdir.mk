@@ -4,19 +4,25 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../source/gpioint.c \
 ../source/lwip_mqtt_freertos.c \
 ../source/lwip_mqtt_id_sim.c \
-../source/semihost_hardfault.c 
+../source/semihost_hardfault.c \
+../source/servo.c 
 
 C_DEPS += \
+./source/gpioint.d \
 ./source/lwip_mqtt_freertos.d \
 ./source/lwip_mqtt_id_sim.d \
-./source/semihost_hardfault.d 
+./source/semihost_hardfault.d \
+./source/servo.d 
 
 OBJS += \
+./source/gpioint.o \
 ./source/lwip_mqtt_freertos.o \
 ./source/lwip_mqtt_id_sim.o \
-./source/semihost_hardfault.o 
+./source/semihost_hardfault.o \
+./source/servo.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -31,7 +37,7 @@ source/%.o: ../source/%.c source/subdir.mk
 clean: clean-source
 
 clean-source:
-	-$(RM) ./source/lwip_mqtt_freertos.d ./source/lwip_mqtt_freertos.o ./source/lwip_mqtt_id_sim.d ./source/lwip_mqtt_id_sim.o ./source/semihost_hardfault.d ./source/semihost_hardfault.o
+	-$(RM) ./source/gpioint.d ./source/gpioint.o ./source/lwip_mqtt_freertos.d ./source/lwip_mqtt_freertos.o ./source/lwip_mqtt_id_sim.d ./source/lwip_mqtt_id_sim.o ./source/semihost_hardfault.d ./source/semihost_hardfault.o ./source/servo.d ./source/servo.o
 
 .PHONY: clean-source
 

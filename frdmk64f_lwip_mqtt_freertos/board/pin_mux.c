@@ -26,6 +26,7 @@ processor_version: 6.0.0
 #include "fsl_common.h"
 #include "fsl_port.h"
 #include "pin_mux.h"
+#include "board.h"
 
 /* FUNCTION ************************************************************************************************************
  *
@@ -113,7 +114,7 @@ void BOARD_InitPins(void)
                                                    kPORT_MuxAsGpio,
                                                    /* Pin Control Register fields [15:0] are not locked */
                                                    kPORT_UnlockRegister};
-    /* PORTA4 (pin 38) is configured as PTA4 */
+    /* PORTA4 (pin 38) SW3 is configured as PTA4 */
     PORT_SetPinConfig(PORTA, 4U, &porta4_pin38_config);
 
     /* PORTA5 (pin 39) is configured as RMII0_RXER */
@@ -157,6 +158,23 @@ void BOARD_InitPins(void)
     /* PORTC18 (pin 92) is configured as ENET0_1588_TMR2 */
     PORT_SetPinMux(PORTC, 18U, kPORT_MuxAlt4);
 
+    const port_pin_config_t SW2 = {/* Internal pull-up resistor is enabled */
+                                       kPORT_PullUp,
+                                       /* Fast slew rate is configured */
+                                       kPORT_FastSlewRate,
+                                       /* Passive filter is disabled */
+                                       kPORT_PassiveFilterDisable,
+                                       /* Open drain is disabled */
+                                       kPORT_OpenDrainDisable,
+                                       /* Low drive strength is configured */
+                                       kPORT_LowDriveStrength,
+                                       /* Pin is configured as PTC6 */
+                                       kPORT_MuxAsGpio,
+                                       /* Pin Control Register fields [15:0] are not locked */
+                                       kPORT_UnlockRegister};
+
+    PORT_SetPinConfig(PORTC, 6U, &SW2);
+
     SIM->SOPT5 = ((SIM->SOPT5 &
                    /* Mask bits to zero which are setting */
                    (~(SIM_SOPT5_UART0TXSRC_MASK)))
@@ -164,6 +182,9 @@ void BOARD_InitPins(void)
                   /* UART 0 transmit data source select: UART0_TX pin. */
                   | SIM_SOPT5_UART0TXSRC(SOPT5_UART0TXSRC_UART_TX));
 }
+
+
+
 /***********************************************************************************************************************
  * EOF
  **********************************************************************************************************************/

@@ -37,6 +37,8 @@
 #include "fsl_phyksz8081.h"
 #include "fsl_enet_mdio.h"
 #include "fsl_device_registers.h"
+
+#include "fsl_rnga.h"
 /*******************************************************************************
  * Definitions
  ******************************************************************************/
@@ -106,6 +108,25 @@ static void connect_to_mqtt(void *ctx);
  * Variables
  ******************************************************************************/
 
+//Flags
+ static u8_t resetAlarms = 0;
+ static u8_t alarm = 0;
+ static u8_t GenRun = 0;
+ static u8_t GenStatus = 0;
+ static u8_t voltageChanged= 1;
+ extern volatile bool button2_pressed;
+ extern volatile bool button1_pressed;
+
+
+
+struct publisher_data_struct {
+	 char *topic;
+	 char *message;
+ };
+
+struct publisher_data_struct publisher_data;
+
+
 static mdio_handle_t mdioHandle = {.ops = &EXAMPLE_MDIO_OPS};
 static phy_handle_t phyHandle   = {.phyAddr = EXAMPLE_PHY_ADDRESS, .mdioHandle = &mdioHandle, .ops = &EXAMPLE_PHY_OPS};
 
@@ -169,12 +190,26 @@ static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len
 
 /*!
  * @brief Called when recieved incoming published message fragment.
+ * Here we need to parse what we received.
  */
 static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags)
 {
     int i;
 
     LWIP_UNUSED_ARG(arg);
+    if (strncmp(data,"ResetAlarms",len) == 0){
+    	resetAlarms = 1;
+    	PRINTF("Entro ResetAlarms\n\r");
+    }
+    if (strncmp(data,"GenOn",len) == 0){
+    	GenRun = 1;
+    	PRINTF("Entro GenOn\n\r");
+	}
+    if (strncmp(data,"GenOff",len) == 0){
+		GenRun = 0;
+		PRINTF("Entro GenOff\n\r");
+	}
+
 
     for (i = 0; i < len; i++)
     {
@@ -199,8 +234,8 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
  */
 static void mqtt_subscribe_topics(mqtt_client_t *client)
 {
-    static const char *topics[] = {"dorian/#", "lwip_other/#"};
-    int qos[]                   = {0, 1};
+    static const char *topics[] = {"dorian/Control/#", "dorian/Reset/#"};
+    int qos[]                   = {1, 1};
     err_t err;
     int i;
 
@@ -299,14 +334,86 @@ static void mqtt_message_published_cb(void *arg, err_t err)
 }
 
 /*!
- * @brief Publishes a message. To be called on tcpip_thread.
+ * @brief Publishes a Generator ON message. To be called on tcpip_thread.
  */
-static void publish_message(void *ctx)
+static void publish_message_generator_on(void *ctx)
 {
-    static const char *topic   = "dorian/k64";
-    static const char *message = "Dorian's board";
+	//struct publisher_data_struct data = (publisher_data_struct)*ctx;
+	//data.topic=  "Dorian/Alarms";
+	static const char *topic   = "Dorian/Status";
+	static const char *message = "GenOn";
 
     LWIP_UNUSED_ARG(ctx);
+
+    PRINTF("Going to publish to the topic \"%s\"...\r\n", topic);
+
+    mqtt_publish(mqtt_client, topic, message, strlen(message), 1, 1,
+    		mqtt_message_published_cb, (void *)topic);
+}
+/*!
+ * @brief Publishes a Generator OFF message. To be called on tcpip_thread.
+ */
+static void publish_message_generator_off(void *ctx)
+{
+	//struct publisher_data_struct data = (publisher_data_struct)*ctx;
+	//data.topic=  "Dorian/Alarms";
+	static const char *topic   = "Dorian/Status";
+	static const char *message = "GenOff";
+
+    LWIP_UNUSED_ARG(ctx);
+
+    PRINTF("Going to publish to the topic \"%s\"...\r\n", topic);
+
+    mqtt_publish(mqtt_client, topic, message, strlen(message), 1, 1,
+    		mqtt_message_published_cb, (void *)topic);
+}
+
+/*!
+ * @brief Publishes an Alarm ON message. To be called on tcpip_thread.
+ */
+static void publish_message_alarm_on(void *ctx)
+{
+	static const char *topic   = "Dorian/Alarms";
+	static const char *message = "Alarm_on";
+
+    LWIP_UNUSED_ARG(ctx);
+
+    PRINTF("Going to publish to the topic \"%s\"...\r\n", topic);
+
+    mqtt_publish(mqtt_client, topic, message, strlen(message), 1, 1,
+    		mqtt_message_published_cb, (void *)topic);
+}
+
+/*!
+ * @brief Publishes Warning and Alarm OFF messages. To be called on tcpip_thread.
+ */
+static void publish_message_alarms_off(void *ctx)
+{
+	static const char *topic   = "Dorian/Alarms";
+	static const char *message = "Alarm_off";
+
+    LWIP_UNUSED_ARG(ctx);
+
+    PRINTF("Going to publish to the topic \"%s\"...\r\n", topic);
+
+    mqtt_publish(mqtt_client, topic, message, strlen(message), 1, 1,
+    		mqtt_message_published_cb, (void *)topic);
+}
+/*!
+ * @brief Publishes Warning and Alarm OFF messages. To be called on tcpip_thread.
+ */
+static void publish_message_voltage(void *ctx)
+{
+	static const char *topic   = "Dorian/battery";
+	static const char *message = "00";
+	message = (char*)ctx;
+	//sprintf(message, "%d", (char*)ctx);
+	PRINTF("payload to publish");
+	for (int j=0;j<sizeof message;j++){
+		PRINTF("%c",message[j]);
+	}
+    LWIP_UNUSED_ARG(ctx);
+    PRINTF("\n\r");
 
     PRINTF("Going to publish to the topic \"%s\"...\r\n", topic);
 
@@ -320,9 +427,14 @@ static void publish_message(void *ctx)
 static void app_thread(void *arg)
 {
     struct netif *netif = (struct netif *)arg;
+    //struct publisher_data_struct publisher_data;
     struct dhcp *dhcp;
     err_t err;
     int i;
+    status_t status;
+	uint32_t data[1];
+	char buffer[2];
+
 
     /* Wait for address from DHCP */
 
@@ -379,16 +491,101 @@ static void app_thread(void *arg)
     }
 
     /* Publish some messages */
-    for (i = 0; i < 5;)
+    for (;;)
     {
         if (connected)
         {
-            err = tcpip_callback(publish_message, NULL);
-            if (err != ERR_OK)
-            {
-                PRINTF("Failed to invoke publishing of a message on the tcpip_thread: %d.\r\n", err);
-            }
-            i++;
+
+        	if(button1_pressed){
+        		//publisher_data.topic ="Dorian/Alarms";
+        		//publisher_data.message = "Warning_off";
+        		//err = tcpip_callback(publish_message_warning_on, &publisher_data);
+        		err = tcpip_callback(publish_message_alarm_on, NULL);
+				if (err != ERR_OK)
+				{
+					PRINTF("Failed to invoke publishing of a message on the tcpip_thread: %d.\r\n", err);
+				}
+				button1_pressed = 0;
+				alarm = 1;
+			    GPIO_PortClear(BOARD_LED_RED_GPIO, 1u << BOARD_LED_RED_GPIO_PIN);
+			    GPIO_PortSet(BOARD_LED_BLUE_GPIO, 1u << BOARD_LED_BLUE_GPIO_PIN);
+				GenRun = 0;
+
+        	}
+        	if (button2_pressed){
+        		err = tcpip_callback(publish_message_generator_on, NULL);
+				if (err != ERR_OK)
+				{
+					PRINTF("Failed to invoke publishing of a message on the tcpip_thread: %d.\r\n", err);
+				}else{
+					GenRun = 1;
+					button2_pressed = 0;
+				}
+
+        	}
+        	if(resetAlarms){
+        		err = tcpip_callback(publish_message_alarms_off, NULL);
+				if (err != ERR_OK)
+				{
+					PRINTF("Failed to invoke publishing of a message on the tcpip_thread: %d.\r\n", err);
+				}
+				resetAlarms = 0;
+				alarm = 0;
+				//Turn of LEDs
+			    GPIO_PortSet(BOARD_LED_RED_GPIO, 1u << BOARD_LED_RED_GPIO_PIN);
+			    GPIO_PortSet(BOARD_LED_BLUE_GPIO, 1u << BOARD_LED_BLUE_GPIO_PIN);
+			    GenRun = 0;
+
+
+        	}
+        	if (GenRun != GenStatus){
+        		if(GenRun && alarm ==0){
+        			err = tcpip_callback(publish_message_generator_on, NULL);
+					if (err != ERR_OK)
+					{
+						PRINTF("Failed to invoke publishing of a message on the tcpip_thread: %d.\r\n", err);
+					}else{
+						GenStatus = 1;
+						//Turn on Blue led
+					    GPIO_PortClear(BOARD_LED_BLUE_GPIO, 1u << BOARD_LED_BLUE_GPIO_PIN);
+					}
+        		}else{
+        			err = tcpip_callback(publish_message_generator_off, NULL);
+					if (err != ERR_OK)
+					{
+						PRINTF("Failed to invoke publishing of a message on the tcpip_thread: %d.\r\n", err);
+					}
+					GenStatus = 0;
+				    GPIO_PortSet(BOARD_LED_BLUE_GPIO, 1u << BOARD_LED_BLUE_GPIO_PIN);
+        		}
+				PRINTF("Gen Status change \r\n");
+			}
+        	if(voltageChanged){
+        		status = RNGA_GetRandomData(RNG, data, sizeof(data));
+				if (status == kStatus_Success)
+				{
+					/* Print data*/
+					PRINTF("Random = 0x%X\r\n", data[0]);
+					float res = 10.0+(data[0]/4294967295.0)*5.0;
+					int resint = (int)res;
+					PRINTF("res = %d \r\n", resint);
+					itoa(resint, buffer, 10); //10 means decimal
+					PRINTF("res in char = ", resint);
+					for (int j=0;j<sizeof buffer;j++){
+						PRINTF("%c",buffer[j]);
+					}
+					err = tcpip_callback(publish_message_voltage, buffer);
+					if (err != ERR_OK)
+					{
+						PRINTF("Failed to invoke publishing of a message on the tcpip_thread: %d.\r\n", err);
+					}
+				}
+				else
+				{
+					PRINTF("RNGA failed!\r\n");
+				}
+        	}
+
         }
 
         sys_msleep(1000U);
@@ -479,6 +676,10 @@ int main(void)
     BOARD_InitBootPins();
     BOARD_InitBootClocks();
     BOARD_InitDebugConsole();
+    BOARD_InitGPIOInterrupts();
+    BOARD_InitLEDsPins();
+    /* Init RNGA */
+    RNGA_Init(RNG);
     /* Disable SYSMPU. */
     base->CESR &= ~SYSMPU_CESR_VLD_MASK;
 
